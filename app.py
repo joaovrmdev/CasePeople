@@ -97,7 +97,7 @@ if df_aval is not None:
 
     st.markdown("---")
 
-    # --- ANÁLISE DE GAPS (PERGUNTA 2) ---
+    # --- ANÁLISE DE GAPS ---
     st.subheader("Onde estão os maiores problemas?")
     
     gap_counts = (df_view[gaps] < 0).sum().reset_index()
@@ -162,7 +162,7 @@ if df_aval is not None:
         st.plotly_chart(fig_radar, use_container_width=True)
 
     with col_radar2:
-        st.info("💡 **Insight:**")
+        st.info("**Insight Rápido:**")
         avg_gaps = df_view[gaps].mean()
         worst_skill_gap = avg_gaps.idxmin()
         worst_skill_name = worst_skill_gap.replace('_gap', '')
@@ -170,7 +170,81 @@ if df_aval is not None:
         
         st.markdown(f"A competência mais crítica é **{worst_skill_name}**.")
         st.markdown(f"Em média, os POs estão **{abs(worst_gap_val):.2f} pontos** abaixo do esperado nesta skill.")
-        st.markdown("**Recomendação:** Iniciar plano de capacitação imediato focado nesta competência.")
 
-    with st.expander("Ver dados detalhados"):
+    st.markdown("---")
+
+    # PRIORIZAÇÃO (ONDE ATUAR PRIMEIRO)
+
+    st.subheader("Matriz de Priorização: Onde atuar primeiro?")
+    st.markdown("""
+    Esta visão cruza **Alcance** (quantas pessoas precisam) x **Severidade** (tamanho do gap).
+    Os pontos no canto superior direito são as prioridades imediatas.
+    """)
+
+    # Preparar dados para o Scatter Plot
+    summary_data = []
+    for i, skill in enumerate(skills):
+        gap_col = gaps[i]
+        # Consideramos gap apenas quem está NEGATIVO
+        below_target = df_view[df_view[gap_col] < 0]
+        count = len(below_target)
+        # Severidade: Gap médio apenas de quem tem gap (para não diluir com quem está bem)
+        avg_gap_val = below_target[gap_col].mean() if count > 0 else 0
+        
+        summary_data.append({
+            'Skill': skill,
+            'Afetados (%)': (count / total_pos) * 100,
+            'Severidade Média': abs(avg_gap_val) # Adoção para ter o gráfico positivo
+        })
+    
+    df_summary = pd.DataFrame(summary_data)
+    
+    col_matrix_1, col_matrix_2 = st.columns([3, 1])
+
+    with col_matrix_1:
+        fig_scatter = px.scatter(
+            df_summary,
+            x='Afetados (%)',
+            y='Severidade Média',
+            text='Skill',
+            size='Afetados (%)',
+            color='Severidade Média',
+            color_continuous_scale='Reds',
+            title="Priorização de Treinamentos (Canto Superior Direito = Crítico)"
+        )
+        # Linhas de quadrante para facilitar leitura
+        fig_scatter.add_vline(x=50, line_dash="dash", line_color="gray", opacity=0.5)
+        fig_scatter.add_hline(y=0.5, line_dash="dash", line_color="gray", opacity=0.5)
+        fig_scatter.update_traces(textposition='top center')
+        st.plotly_chart(fig_scatter, use_container_width=True)
+
+    with col_matrix_2:
+        # Pega a skill com maior combinação de severidade e alcance
+        priority_skill = df_summary.sort_values(by=['Afetados (%)', 'Severidade Média'], ascending=False).iloc[0]
+        st.warning(f"**Prioridade #1:**\n\n {priority_skill['Skill']}")
+        st.markdown(f"Impacta **{priority_skill['Afetados (%)']:.0f}%** do time.")
+        st.markdown("Recomendação: Treinamento obrigatório de curto prazo.")
+
+    st.markdown("---")
+
+    # TOP TALENTS (MENTORES)
+    
+    st.subheader("Top Talents: Potenciais Mentores")
+    st.markdown("Estes colaboradores atingiram todos os critérios de excelência para a função. Eles podem atuar como multiplicadores de conhecimento.")
+
+    # Filtra quem tem alto desempenho (fit)
+    top_talents = df_view[df_view['is_fit'] == True][['Nome do colaborador avaliado', 'ESPECIALIDADE_avaliado']]
+
+    if not top_talents.empty:
+        col_talents_1, col_talents_2 = st.columns([1, 2])
+        with col_talents_1:
+            st.metric("Total de Mentores", len(top_talents))
+        with col_talents_2:
+            st.dataframe(top_talents, hide_index=True, use_container_width=True)
+    else:
+        st.warning("Nenhum colaborador nesta seleção atende 100% dos requisitos atualmente.")
+
+    st.markdown("---")
+
+    with st.expander("Ver base de dados completa para análise"):
         st.dataframe(df_view.style.format("{:.1f}", subset=[c for c in df_view.columns if 'actual' in c or 'gap' in c]))
